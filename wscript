@@ -41,8 +41,8 @@ def options(opt):
 
 def configure_cpp_compiler(conf):
     # use clang/clang++ if available
-    conf.find_program('clang', var='CC')
-    conf.find_program('clang++', var='CXX')
+    conf.find_program('clang-3.5', var='CC')
+    conf.find_program('clang++-3.5', var='CXX')
     ccache = conf.find_program('ccache', var='CCACHE', mandatory=False)
     if ccache:
         conf.env['CC'] = ccache + ' ' + conf.env['CC']
