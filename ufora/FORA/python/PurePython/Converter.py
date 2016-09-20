@@ -722,7 +722,7 @@ class Converter(object):
                     stream.defineStacktrace(objId, stackTraceAsJsonOrNone)
                     return objId
                 else:
-                    assert False, "unknown tuple, but not a stacktra"
+                    assert False, "unknown tuple, but not a stacktrace"
 
             if implval.isObject():
                 objectClass = implval.getObjectClass()
