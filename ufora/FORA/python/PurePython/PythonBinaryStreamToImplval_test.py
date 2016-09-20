@@ -20,7 +20,6 @@ import ufora.native.FORA as ForaNative
 import ufora.FORA.python.ForaValue as ForaValue
 import ufora.native.CallbackScheduler as CallbackScheduler
 import ufora.FORA.python.PurePython.Converter as Converter
-import ufora.FORA.python.PurePython.PythonAstConverter as PythonAstConverter
 import ufora.FORA.python.PurePython.PyforaToJsonTransformer as PyforaToJsonTransformer
 import ufora.FORA.python.Evaluator.Evaluator as Evaluator
 import pyfora.BinaryObjectRegistry as BinaryObjectRegistry
@@ -171,20 +170,7 @@ class PythonBinaryStreamToImplvalTest(unittest.TestCase):
 
         data = binaryObjectRegistry.str()
 
-        streamReader = ForaNative.PythonBinaryStreamToImplval(
-            self.vdm,
-            converter.purePythonModuleImplVal,
-            converter.builtinMemberMapping,
-            converter.nativeConstantConverter,
-            converter.nativeListConverter,
-            converter.nativeTupleConverter,
-            converter.nativeDictConverter,
-            ForaNative.PyforaSingletonAndExceptionConverter(
-                converter.purePythonModuleImplVal,
-                converter.singletonAndExceptionConverter.pythonNameToInstance
-                ),
-            PythonAstConverter.parseStringToPythonAst
-            )
+        streamReader = PythonBinaryStreamToImplval.constructConverter(Converter.canonicalPurePythonModule(), self.vdm)
 
         streamReader.read(data)
         anObjAsImplval = streamReader.getObjectById(root_id)
