@@ -123,6 +123,151 @@ public:
         return simulateApply(emptyTreeVec() + a1 + a2 + a3);
         }
 
+    static Nullable<ImplValContainer> getMember(ImplValContainer a, std::string s)
+        {
+        return simulateApply(
+            a, 
+            ImplValContainer(CSTValue(Symbol("Member"))), 
+            ImplValContainer(CSTValue(Symbol(s)))
+            );
+        }
+
+    static Nullable<CodeLocation> getObjectDefinitionPoint(const ImplValContainer& val)
+        {
+        if (!val.type().isClass())
+            return null();
+
+        ExpressionLocationMetadata meta;
+
+        @match ClassMediator(*val.type().getClass().classBody().mediator())
+            -| Function(f) ->> {
+                meta = f.locationMetadata();
+                }
+            -| Lambda(e) ->> {
+                meta = e.locationMetadata();
+                }
+            -| Object(o) ->> {
+                meta = o.locationMetadata();
+                }
+            -| Class(o) ->> {
+                meta = o.locationMetadata();
+                }
+            -| _ ->> { return null(); }
+            ;
+
+        Nullable<CodeLocation> loc;
+        if (meta.isWithId())
+            loc = GlobalCodeLocationRegistry::getCodeLocation(meta.getWithId().id());
+
+        return loc;
+        }
+
+    static ImmutableTreeVector<Symbol> getObjectMembers(ImplValContainer& value)
+        {
+        ImmutableTreeVector<Symbol> res;
+
+        if (!value.type().isClass())
+            return res;
+
+        ClassMediator mediator = *value.type().getClass().classBody().mediator();
+
+        if (mediator.isObject())
+            {
+            ObjectDefinitionBody body =
+                mediator.getObject().obj().body();
+
+            while (!body.isEmpty())
+                {
+                if (body.getTerm().termWithMetadata().objectDefinitionTerm().isMember())
+                    res = res + 
+                        body.getTerm().termWithMetadata().objectDefinitionTerm()
+                            .getMember().membername();
+                
+                body = body.getTerm().otherwise();
+                }
+
+            return res;
+            }
+            else
+        if (mediator.isClass())
+            {
+            ClassDefinitionBody body =
+                mediator.getClass().obj().body();
+
+            while (!body.isEmpty())
+                {
+                @match ClassDefinitionTerm(body.getTerm().termWithMetadata().classDefinitionTerm())
+                    -| DataMember(x) ->> { res = res + x; }
+                    -| Static(Member(x)) ->> { res = res + x; }
+                    -| ObjectTerm(Member(x)) ->> { res = res + x; }
+                    -| _ ->> { }
+                    ;
+
+                body = body.getTerm().otherwise();
+                }
+
+            return res;
+            }
+
+        return res;
+        }
+
+    static ImmutableTreeVector<Symbol> getObjectLexicalMembers(ImplValContainer& value)
+        {
+        if (!value.type().isClass())
+            return emptyTreeVector();
+
+        ImmutableTreeVector<Symbol> res;
+
+        for (auto nameAndBinding: mediator.lexicalSurroundings().bindings())
+            res = res + nameAndBinding.first;
+
+        return res;
+        }
+
+    static Nullable<ImplValContainer> getObjectMetadata(const ImplValContainer& value)
+        {
+        if (!value.type().isClass())
+            return null();
+
+        ClassMediator mediator = *value.type().getClass().classBody().mediator();
+
+        Nullable<CSTValue> result;
+
+        @match ClassMediator(mediator)
+            -| Function(_,_,meta) ->> { result = meta; }
+            -| Object(_,_,meta) ->> { result = meta; }
+            -| Class(_,_,meta) ->> { result = meta; }
+            -| Lambda() ->> { result = ImplValContainer(); }
+            -| _ ->> {}
+            ;
+
+        if (result)
+            return null() << result->getReference();
+
+        return null();
+        }
+
+    static Nullable<std::string> getObjectDefinitionSourceTextFromMetadata(ImplValContainer value)
+        {
+        auto nMeta = PythonBinaryStreamCommon::getObjectMetadata(value);
+        if (!nMeta)
+            return null();
+
+        if (nMeta->type().isTuple())
+            for (long k = 0; k < nMeta->type().getTuple().elts().size(); k++)
+                if (nMeta->type().getTuple().names()[k] == Nullable<Symbol>(Symbol("classMetadata")))
+                    {
+                    nMeta = *nMeta->tupleGetItem(k);
+                    break;
+                    }
+
+        for (long k = 0; k < nMeta->type().getTuple().elts().size(); k++)
+            if (nMeta->type().getTuple().names()[k] == Nullable<Symbol>(Symbol("sourceText")))
+                return getObjectMetadata(*nMeta->tupleGetItem(k));
+        return null();
+        }
+
     };
 
 }

@@ -49,6 +49,7 @@ PythonBinaryStreamFromImplval::PythonBinaryStreamFromImplval(
         mSingletonAndExceptionConverter(inSingletonAndExceptionConverter),
         mNextObjId(0)
     {
+    mPyforaBoundMethodClass = *PythonBinaryStreamCommon::getMember(mPyforaBuiltins, "PyBoundMethod");
     }
 
 int64_t PythonBinaryStreamFromImplval::write(OBinaryStream& stream, ImplValContainer value)
@@ -87,7 +88,7 @@ int64_t PythonBinaryStreamFromImplval::write(OBinaryStream& stream, ImplValConta
         return objId;
         }
 
-    Nullable<ImplValContainer> primitive = mConstantConverter->unwrapPrimitive(value);
+    Nullable<ImplValContainer> primitive = mConstantConverter->unwrapToPrimitive(value);
     if (value.type().isString())
         primitive = value;
 
@@ -139,7 +140,7 @@ int64_t PythonBinaryStreamFromImplval::write(OBinaryStream& stream, ImplValConta
                     //this is a string
                     bool allLoaded = vec.visitAnyLoadedValues(
                         &*mVDM, [&](ForaValueArray* array, IntegerSequence subsequence) {
-                            lassert(array->isHomogenousPod() && array->homogenousStride() == 1);
+                            lassert(array->isHomogenousPodArray() && array->homogenousStride() == 1);
                             uint8_t* data = array->offsetFor(0);
 
                             if (subsequence.stride() != 1)
@@ -156,9 +157,13 @@ int64_t PythonBinaryStreamFromImplval::write(OBinaryStream& stream, ImplValConta
                         );
 
                     if (allLoaded)
+                        {
                         lassert(bytesWritten == vec.size());
+                        }
                     else
+                        {
                         lassert(bytesWritten != vec.size());
+                        }
 
                     lassert_dump(allLoaded, "we should be keeping track of pages we needed to read from!");
                     }
@@ -189,7 +194,7 @@ int64_t PythonBinaryStreamFromImplval::write(OBinaryStream& stream, ImplValConta
     auto exceptionName = mSingletonAndExceptionConverter->convertExceptionInstance(value, exceptionArgs, isPyAbort);
     if (exceptionName)
         {
-        int64_t argsId = write(stream, *exceptionArgs);
+        int64_t argsId = write(stream, exceptionArgs);
 
         stream << objId;
 
@@ -248,7 +253,7 @@ int64_t PythonBinaryStreamFromImplval::write(OBinaryStream& stream, ImplValConta
     auto listContents = mListConverter->invertList(value);
     if (listContents)
         {
-        lassert(listContents.type()->isVector());
+        lassert(listContents->type().isVector());
 
         VectorRecord vec = listContents->cast<VectorRecord>();
 
@@ -270,7 +275,7 @@ int64_t PythonBinaryStreamFromImplval::write(OBinaryStream& stream, ImplValConta
         bool allLoaded = vec.visitAnyLoadedValues(
             &*mVDM, [&](ForaValueArray* array, IntegerSequence subsequence) {
                 for (long k = 0; k < subsequence.size();k++)
-                    objectIds.push_back(write(stream, (array)[subsequence.offsetForIndex(k)]));
+                    objectIds.push_back(write(stream, (*array)[subsequence.offsetForIndex(k)]));
                 },
             IntegerSequence(vec.size())
             );
@@ -283,9 +288,95 @@ int64_t PythonBinaryStreamFromImplval::write(OBinaryStream& stream, ImplValConta
         return objId;
         }
 
-    if (value.type().isObject())
+    if (value.type().isClass())
         {
-        ImplValContainer cls = simulateApply
+        @match Type(value.type())
+            -| Class(elts, (mediator, resumption)) ->> {
+                if (mediator->isObject())
+                    {
+                    Nullable<ImplValContainer> cls = PythonBinaryStreamCommon::simulateApply(
+                        emptyTreeVec() + 
+                            value + 
+                            ImplValContainer(CSTValue(Symbol("Class")))
+                        );
+
+                    if (cls && *cls == mPyforaBoundMethodClass)
+                        {
+                        auto name = ImplValContainerUtilities::objectGetMember(value, Symbol("@name"));
+                        auto instance = ImplValContainerUtilities::objectGetMember(value, Symbol("@self"));
+
+                        lassert(name && !name->second);
+                        lassert(instance && !instance->second);
+
+                        auto nameIV = name->first;
+                        lassert(nameIV.type().isSymbol());
+
+                        int64_t instanceId = write(stream, instance->first);
+
+                        stream << objId;
+                        stream << PythonBinaryStreamCommon::CODE_INSTANCE_METHOD;
+                        stream << instanceId;
+                        stream << nameIV.cast<Symbol>().toString().substr(1);
+
+                        return objId;
+                        }
+
+                    auto codeLoc = *PythonConstantConverter::getObjectDefinitionPoint(value);
+
+                    if (cls)
+                        {
+                        auto contents = ImplValContainerUtilities::objectGetMember(value, Symbol("@m"));
+                        lassert(contents && !contents->second);
+
+                        ImplValContainer tup = contents->first;
+                        lassert(tup.type().isTuple());
+
+                        map<std::string, int64_t> memberIds;
+
+                        int64_t classId = write(stream, cls);
+
+                        for (long k = 0; k < tup.type().getTuple().elts().size(); k++)
+                            {
+                            Nullable<Symbol> name = tup.type().getTuple().names()[k];
+                            ImplValContainer elt = *tup.tupleGetItem(k);
+
+                            memberIds[name->toString()] = write(stream, elt);
+                            }
+
+                        stream << objId;
+                        stream << PythonBinaryStreamCommon::CODE_CLASS_INSTANCE;
+                        stream << classId;
+                        stream << memberIds;
+
+                        return objId;
+                        }
+                    else
+                        {
+                        //this is a function
+                        ImmutableTreeVector<Symbol> members = PythonBinaryStreamCommon::getObjectLexicalMembers(value);
+                        std::map<string, int64_t> memberIds;
+                        for (auto m: members)
+                            {
+                            auto val = ImplValContainerUtilities::objectGetMember(value, m);
+                            if (val && !val->second)
+                                memberIds[m] = write(stream, val->first);
+                            }
+
+                        std::string sourceText = PythonBinaryStreamCommon::getObjectDefinitionSourceTextFromMetadata(value);
+
+                        sourceFileId = transformFile(codeLoc->defPoint().getExternal().paths()[0], sourceText);
+
+                        stream << objId;
+                        stream << PythonBinaryStreamCommon::CODE_FUNCTION
+                        stream << fileId;
+                        stream << (int32_t)codeLoc->range().start().line();
+                        stream << memberIds;
+
+                        return objId;
+                        }
+
+                    }
+                }
         }
 
     lassert_dump(false, "didn't know what to do with " << prettyPrintString(value));

@@ -332,7 +332,7 @@ void PythonBinaryStreamToImplval::read(IBinaryStream& stream)
 
                     lassert(chainsInReverse.find(baseId) != chainsInReverse.end());
 
-                    dottedBaseClassIds = dottedBaseClassIds + splitOnDot<string>(chainsInReverse[baseId]);
+                    dottedBaseClassIds = dottedBaseClassIds + PythonBinaryStreamCommon::splitOnDot<string>(chainsInReverse[baseId]);
                     }
                 }
 
@@ -407,7 +407,7 @@ void PythonBinaryStreamToImplval::read(IBinaryStream& stream)
                             );
                     }
 
-            createFuncExpr = rebindChains(createFuncExpr, chains);
+            createFuncExpr = PythonBinaryStreamCommon::rebindChains(createFuncExpr, chains);
 
             bool allDefined= true;
             for (auto kv: chains)
@@ -450,7 +450,7 @@ void PythonBinaryStreamToImplval::read(IBinaryStream& stream)
 
             ImplValContainer classIVC = mValues[idOfClass];
 
-            if (isUnconvertibleValueTuple(classIVC))
+            if (PythonBinaryStreamCommon::isUnconvertibleValueTuple(classIVC))
                 mValues[objectId] = classIVC;
             else
                 {
@@ -467,7 +467,7 @@ void PythonBinaryStreamToImplval::read(IBinaryStream& stream)
 
                 ImplValContainer symbolCreateInstance = ImplValContainerUtilities::createSymbol(Symbol("CreateInstance"));
 
-                mValues[objectId] = *simulateApply(classIVC, symbolCreateInstance, classArgs);
+                mValues[objectId] = *PythonBinaryStreamCommon::simulateApply(classIVC, symbolCreateInstance, classArgs);
                 }
             }
             else
@@ -480,7 +480,7 @@ void PythonBinaryStreamToImplval::read(IBinaryStream& stream)
 
             assertHasObject(instanceId);
 
-            mValues[objectId] = *simulateApply(
+            mValues[objectId] = *PythonBinaryStreamCommon::simulateApply(
                 mValues[instanceId], 
                 ImplValContainerUtilities::createSymbol(Symbol::Member()),
                 ImplValContainerUtilities::createSymbol(Symbol(methodName))
@@ -658,7 +658,7 @@ void PythonBinaryStreamToImplval::tryToConvertPendingObject(int64_t objectId)
             );
 
     for (int64_t id: reachableObjects)
-        mValues[id] = *simulateApply(
+        mValues[id] = *PythonBinaryStreamCommon::simulateApply(
             value, 
             ImplValContainerUtilities::createSymbol(Symbol::Member()),
             ImplValContainerUtilities::createSymbol(Symbol(recursiveNames[id]))
@@ -824,7 +824,7 @@ Expression PythonBinaryStreamToImplval::replaceUnconvertiblesWithThrows(Expressi
     ImmutableTreeVector<Symbol> varNamesVec;
 
     for (auto& kv: vars)
-        if (isUnconvertibleValueTuple(kv.second))
+        if (PythonBinaryStreamCommon::isUnconvertibleValueTuple(kv.second))
             varNamesVec = varNamesVec + Symbol(kv.first);
 
     if (varNamesVec.size())

@@ -55,6 +55,8 @@ protected:
 
     ImplValContainer mPyforaBuiltins;
 
+    ImplValContainer mPyforaBoundMethodClass;
+
     PolymorphicSharedPtr<VectorDataManager> mVDM;
 
     PolymorphicSharedPtr<PythonConstantConverter> mConstantConverter;
