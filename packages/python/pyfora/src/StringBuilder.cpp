@@ -52,6 +52,12 @@ void StringBuilder::addInt64s(const int64_t* integers, uint64_t nIntegers) {
     }
 
 
+void StringBuilder::addInt64s(const uint64_t* integers, uint64_t nIntegers) {
+    addInt64(nIntegers);
+    _write(reinterpret_cast<const char*>(integers), nIntegers * sizeof(uint64_t));
+    }
+
+
 void StringBuilder::addFloat64(double f) {
     _add(f);
     }

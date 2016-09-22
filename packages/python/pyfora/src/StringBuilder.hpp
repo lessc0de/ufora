@@ -32,6 +32,7 @@ public:
 
     void addInt64s(const std::vector<int64_t>& integers);
     void addInt64s(const int64_t* integers, uint64_t nIntegers);
+    void addInt64s(const uint64_t* integers, uint64_t nIntegers);
     void addString(const std::string& s);
     void addString(const char* s, uint64_t byteCount);
     void addStrings(const std::vector<std::string>& strings);
@@ -42,6 +43,12 @@ public:
 
     uint64_t bytecount() const {
         return mByteCount;
+        }
+
+    void clear() {
+        mStream.clear();
+        mStream.str("");
+        mByteCount = 0;
         }
 
     ~StringBuilder();
